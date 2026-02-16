@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Personal Hub | Premium Organizer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --p: #7c4dff;
+            --p-light: #b388ff;
+            --s: #448aff;
+            --bg: #050510;
+            --glass: rgba(255, 255, 255, 0.04);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text: #ffffff;
+            --text-dim: rgba(255, 255, 255, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(at 0% 0%, rgba(124, 77, 255, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(68, 138, 255, 0.15) 0px, transparent 50%),
+                radial-gradient(at 50% 100%, rgba(124, 77, 255, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        .glass {
+            background: var(--glass);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1.5rem 1.5rem 100px 1.5rem;
+            width: 100%;
+            flex: 1;
+        }
+
+        /* Nav */
+        .nav-bar {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 1.5rem;
+            right: 1.5rem;
+            z-index: 2000;
+            display: flex;
+            justify-content: space-around;
+            padding: 0.8rem;
+            height: 72px;
+            align-items: center;
+        }
+
+        @media (min-width: 768px) {
+            .nav-bar {
+                top: 1.5rem;
+                bottom: auto;
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
+                width: fit-content;
+                gap: 1rem;
+                padding: 0.5rem 2rem;
+            }
+
+            .container {
+                padding-top: 100px;
+                padding-bottom: 2rem;
+            }
+        }
+
+        .btn-tab {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            padding: 0.8rem;
+            cursor: pointer;
+            border-radius: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+
+        .btn-tab.active {
+            color: white;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .btn-tab i,
+        .btn-tab svg {
+            width: 24px;
+            height: 24px;
+            pointer-events: none;
+        }
+
+        button i,
+        button svg {
+            pointer-events: none;
+        }
+
+        /* Auth UI */
+        #auth-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 3000;
+            background: rgba(5, 5, 16, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .auth-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 2.5rem;
+            text-align: center;
+        }
+
+        .auth-input {
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: var(--p);
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 16px;
+            font-weight: 800;
+            cursor: pointer;
+            margin-top: 1rem;
+            box-shadow: 0 8px 20px rgba(124, 77, 255, 0.3);
+        }
+
+        /* Calendar */
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+        }
+
+        .day-cell {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            position: relative;
+            background: rgba(255, 255, 255, 0.02);
+            transition: 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .day-cell.active {
+            background: var(--p);
+            color: white;
+            box-shadow: 0 4px 15px rgba(124, 77, 255, 0.4);
+        }
+
+        .day-cell.today {
+            border-color: var(--p);
+        }
+
+        .dot {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            position: absolute;
+            bottom: 4px;
+        }
+
+        .dot.t {
+            background: #00e676;
+            left: calc(50% - 3px);
+        }
+
+        .dot.h {
+            background: var(--p-light);
+            left: calc(50% + 3px);
+        }
+
+        /* Generic */
+        .block-card {
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        .habit-item {
+            padding: 1.2rem;
+            margin-bottom: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+        }
+
+        .chk {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            border: 2px solid var(--p);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .chk.on {
+            background: var(--p);
+            color: white;
+        }
+
+        .ex-card {
+            padding: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .ex-input-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.8rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: white;
+            font-weight: 700;
+        }
+
+        #toast {
+            position: fixed;
+            top: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.8rem 1.5rem;
+            border-radius: 50px;
+            background: #00e676;
+            color: #000;
+            font-weight: 800;
+            z-index: 4000;
+            opacity: 0;
+            transition: 0.3s;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="toast">Sincronizado</div>
+
+    <!-- AUTH OVERLAY -->
+    <div id="auth-overlay">
+        <div class="glass auth-card fade-in">
+            <h1 style="margin-bottom: 0.5rem;">Hola Aaron</h1>
+            <p style="color: var(--text-dim); margin-bottom: 2rem;">Accede a tu cuenta personal</p>
+
+            <div class="auth-input">
+                <input type="email" id="auth-email" placeholder="Email">
+            </div>
+            <div class="auth-input">
+                <input type="password" id="auth-pass" placeholder="Contraseña">
+            </div>
+
+            <button class="btn-primary" id="btn-login" onclick="window.handleAuth('login')">Entrar</button>
+            <button
+                style="background:none; border:none; color:var(--text-dim); margin-top:1.5rem; font-weight:700; cursor:pointer;"
+                onclick="window.handleAuth('signup')">Crear cuenta</button>
+        </div>
+    </div>
+
+    <!-- MAIN APP (HIDDEN UNTIL AUTH) -->
+    <div id="app-view" class="hidden">
+        <nav class="nav-bar glass">
+            <button class="btn-tab active" onclick="window.setTab('diary', this)"><i
+                    data-lucide="calendar"></i>Diario</button>
+            <button class="btn-tab" onclick="window.setTab('training', this)"><i
+                    data-lucide="dumbbell"></i>Entreno</button>
+            <button class="btn-tab" onclick="window.setTab('stats', this)"><i
+                    data-lucide="trending-up"></i>Stats</button>
+            <button class="btn-tab" onclick="window.setTab('finance', this)"><i
+                    data-lucide="wallet"></i>Capital</button>
+            <button class="btn-tab" onclick="window.logout()"><i data-lucide="log-out"></i></button>
+        </nav>
+
+        <div class="container">
+            <section id="view-diary" class="tab-content fade-in">
+                <h1>Hola de nuevo Aaron</h1>
+                <p class="section-desc">Gestiona tus rachas y hábitos de hoy.</p>
+
+                <div class="glass cal-card" style="padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <button class="btn-tab" onclick="window.calShift(-1)" style="padding: 4px;"><i
+                                data-lucide="chevron-left"></i></button>
+                        <h3 id="calTitle" style="font-weight: 800;"></h3>
+                        <button class="btn-tab" onclick="window.calShift(1)" style="padding: 4px;"><i
+                                data-lucide="chevron-right"></i></button>
+                    </div>
+                    <div class="cal-grid" id="calGrid"></div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 2rem 0 1rem;">
+                    <h2 id="diaryHeading">Hábitos de Hoy</h2>
+                    <button onclick="window.addHabit()"
+                        style="background:none; border:none; color:var(--p); font-weight:800;">+ Añadir</button>
+                </div>
+                <div id="habitsCont"></div>
+            </section>
+
+            <section id="view-training" class="tab-content hidden">
+                <div id="tn-list" class="fade-in">
+                    <h1>Entrenamientos</h1>
+                    <p class="section-desc">Selecciona tu rutina para hoy.</p>
+                    <div id="blocksCont" class="block-grid"></div>
+                    <button class="btn-primary" onclick="window.addBlock()" style="width: 100%;">+ Nuevo Bloque</button>
+                </div>
+
+                <div id="tn-detail" class="hidden fade-in">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem;">
+                        <button onclick="window.showBlocks()" style="background:none; border:none; color:white;"><i
+                                data-lucide="arrow-left"></i></button>
+                        <h1 id="blockTitle" style="margin:0; font-size: 1.8rem;"></h1>
+                    </div>
+                    <button id="btnDone" onclick="window.markDayTrained()" class="glass"
+                        style="width: 100%; padding: 1.2rem; margin-bottom: 2rem; color: var(--p); font-weight: 800; cursor: pointer;">
+                        Marcar sesión completada
+                    </button>
+                    <div id="exsCont"></div>
+                    <button onclick="window.addEx()" class="glass"
+                        style="width:100%; padding: 1rem; border-style: dashed; color: var(--text-dim);">+ Añadir
+                        Ejercicio</button>
+                </div>
+            </section>
+
+            <section id="view-finance" class="tab-content hidden">
+                <h1>Finanzas</h1>
+                <p class="section-desc">Tu reparto mensual 60/20/10/10.</p>
+                <div class="glass" style="padding: 2rem; text-align: center; margin-bottom: 2rem;">
+                    <div style="width: 200px; height: 200px; margin: 0 auto 1.5rem;"><canvas id="finChart"></canvas>
+                    </div>
+                    <h2 id="totalIncDisp" style="font-size: 3rem; font-weight: 800;">2000€</h2>
+                    <input type="number" id="incInput" onchange="updateInc()"
+                        style="text-align: center; max-width: 120px;" value="2000">
+                </div>
+                <div id="finDetails"></div>
+            </section>
+
+            <section id="view-stats" class="tab-content hidden">
+                <h1>Estadísticas Mensuales</h1>
+                <p class="section-desc">Tu rendimiento en el mes de <span id="statsMonthLabel"
+                        style="color:var(--p); font-weight:800;"></span></p>
+
+                <div id="statsCont" style="display: grid; gap: 1rem; margin-top: 1rem;">
+                    <!-- Stats cards injected here -->
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+        const SB_URL = 'https://qtekshafyvmvhyavcefk.supabase.co'
+        const SB_KEY = 'sb_publishable_4iJQFm6hZEcvOyF8Igj1WA_8534gerH'
+        const supabase = createClient(SB_URL, SB_KEY)
+        window.supabase = supabase; // Global para debug
+
+        // --- GLOBAL ERROR HANDLER ---
+        window.onerror = (msg, url, line) => {
+            console.error("Global Error:", msg, line);
+            toast("Error Crítico: " + msg, "#ff4081");
+        };
+
+        // --- GLOBAL STATE ---
+        let user = null;
+        let isSyncing = false;
+        let db = { habits: [], logs: {}, blocks: [], t_logs: {}, income: 2000 };
+
+        let currCal = new Date();
+        let selDayStr = new Date().toISOString().split('T')[0];
+        let currBlockId = null;
+        let finChart = null;
+
+        // --- UTILS ---
+        const getEl = (id) => document.getElementById(id);
+        const toast = (msg, color = '#00e676') => {
+            const t = getEl('toast');
+            if (!t) return;
+            console.log("TOAST:", msg);
+            t.innerText = msg;
+            t.style.background = color;
+            t.style.opacity = '1';
+            setTimeout(() => { if (t) t.style.opacity = '0'; }, 3000);
+        };
+
+        // --- AUTH LOGIC ---
+        window.handleAuth = async (type) => {
+            try {
+                const email = getEl('auth-email').value;
+                const password = getEl('auth-pass').value;
+                if (!email || !password) return alert('Introduce email y contraseña');
+
+                toast(type === 'login' ? 'Identificando...' : 'Registrando...', '#448aff');
+                const { data, error } = type === 'login'
+                    ? await supabase.auth.signInWithPassword({ email, password })
+                    : await supabase.auth.signUp({ email, password });
+
+                if (error) throw error;
+                toast("¡Bienvenido!");
+            } catch (e) {
+                alert("Error de acceso: " + e.message);
+                console.error(e);
+            }
+        }
+
+        window.logout = async () => {
+            console.log("Cerrando sesión...");
+            await supabase.auth.signOut();
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.reload();
+        };
+
+        // --- SYNC & DATA ---
+        async function syncAll() {
+            if (!user || isSyncing) return;
+            isSyncing = true;
+            try {
+                console.log("Syncing user:", user.id);
+
+                // Income
+                const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+                if (prof) db.income = prof.income;
+                else await supabase.from('profiles').upsert({ id: user.id, income: 2000 });
+
+                // Habits
+                const { data: habs } = await supabase.from('habits').select('*').eq('user_id', user.id);
+                db.habits = habs || [];
+
+                // Habit Logs
+                const { data: hlogs } = await supabase.from('habit_logs').select('*').eq('user_id', user.id);
+                db.logs = {};
+                hlogs?.forEach(l => {
+                    if (!db.logs[l.date]) db.logs[l.date] = {};
+                    db.logs[l.date][l.habit_id] = l.completed;
+                });
+
+                // Training Blocks
+                const { data: blks } = await supabase.from('training_blocks').select('*').eq('user_id', user.id);
+                db.blocks = blks || [];
+
+                // Training Logs
+                const { data: tlogs } = await supabase.from('training_logs').select('*').eq('user_id', user.id);
+                db.t_logs = {};
+                tlogs?.forEach(l => db.t_logs[l.date] = l.completed);
+
+                console.log("Sync done. Habits:", db.habits.length);
+                window.renderAll();
+                toast("Sincronizado");
+            } catch (e) {
+                console.error("Sync Error:", e);
+                toast("Error al sincronizar", "#ff4081");
+                window.renderAll();
+            } finally {
+                isSyncing = false;
+            }
+        }
+
+        // --- RENDERERS ---
+        window.renderAll = () => {
+            try {
+                window.renderCal();
+                window.renderHabits();
+                if (!getEl('view-training').classList.contains('hidden')) window.showBlocks();
+                if (!getEl('view-finance').classList.contains('hidden')) window.renderFin();
+                if (!getEl('view-stats').classList.contains('hidden')) window.renderStats();
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            } catch (e) { console.error("RenderAll error:", e); }
+        }
+
+        window.renderCal = () => {
+            const grid = getEl('calGrid');
+            const title = getEl('calTitle');
+            if (!grid || !title) return;
+            grid.innerHTML = '';
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            title.innerText = `${monthNames[currCal.getMonth()]} ${currCal.getFullYear()}`;
+            ['L', 'M', 'X', 'J', 'V', 'S', 'D'].forEach(d => grid.innerHTML += `<div style="font-size:0.6rem; color:var(--text-dim); font-weight:800; text-align:center;">${d}</div>`);
+
+            const m = currCal.getMonth(), y = currCal.getFullYear();
+            const first = new Date(y, m, 1).getDay();
+            const total = new Date(y, m + 1, 0).getDate();
+            const offset = (first === 0 ? 6 : first - 1);
+            for (let i = 0; i < offset; i++) grid.appendChild(document.createElement('div'));
+
+            for (let i = 1; i <= total; i++) {
+                const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                const cell = document.createElement('div');
+                cell.className = 'day-cell' + (ds === selDayStr ? ' active' : '');
+                if (ds === new Date().toISOString().split('T')[0]) cell.classList.add('today');
+                cell.innerText = i;
+                cell.onclick = () => { selDayStr = ds; window.renderCal(); window.renderHabits(); };
+
+                if (db.t_logs[ds]) cell.innerHTML += `<div class="dot t"></div>`;
+                const dLog = db.logs[ds];
+                if (dLog && db.habits.length > 0) {
+                    const allDone = db.habits.every(h => dLog[h.id]);
+                    if (allDone) cell.innerHTML += `<div class="dot h"></div>`;
+                }
+                grid.appendChild(cell);
+            }
+        }
+
+        window.renderHabits = () => {
+            const cont = getEl('habitsCont');
+            const heading = getEl('diaryHeading');
+            if (!cont || !heading) return;
+            heading.innerText = selDayStr === new Date().toISOString().split('T')[0] ? 'Hábitos de Hoy' : `Hábitos (${selDayStr})`;
+            cont.innerHTML = db.habits.length === 0 ? `<p style="color:var(--text-dim); text-align:center; padding:2rem;">Sin hábitos.</p>` : '';
+            db.habits.forEach(h => {
+                const done = db.logs[selDayStr]?.[h.id] || false;
+                const div = document.createElement('div');
+                div.className = 'glass habit-item';
+                div.onclick = () => window.toggleHabit(h.id, done);
+                div.innerHTML = `<span style="font-weight:700;">${h.name}</span><div class="chk ${done ? 'on' : ''}">${done ? '<i data-lucide="check" style="width:16px;"></i>' : ''}</div>`;
+                cont.appendChild(div);
+            });
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.showBlocks = () => {
+            getEl('tn-detail').classList.add('hidden');
+            getEl('tn-list').classList.remove('hidden');
+            const cont = getEl('blocksCont');
+            if (!cont) return;
+            cont.innerHTML = db.blocks.length === 0 ? `<p style="color:var(--text-dim); text-align:center; padding:2rem;">Sin rutinas.</p>` : '';
+            db.blocks.forEach(b => {
+                const div = document.createElement('div');
+                div.className = 'glass block-card';
+                div.onclick = () => window.showDetail(b.id);
+                div.innerHTML = `<h3>${b.name}</h3><span style="opacity:0.4; font-weight:700;">${b.exercises?.length || 0} ej.</span>`;
+                cont.appendChild(div);
+            });
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.showDetail = (id) => {
+            currBlockId = id;
+            const b = db.blocks.find(x => x.id === id);
+            if (!b) return;
+            getEl('tn-list').classList.add('hidden');
+            getEl('tn-detail').classList.remove('hidden');
+            getEl('blockTitle').innerText = b.name;
+            window.updateBtnTrained();
+            window.renderExs();
+        }
+
+        window.renderExs = () => {
+            const b = db.blocks.find(x => x.id === currBlockId);
+            const cont = getEl('exsCont');
+            if (!b || !cont) return;
+            cont.innerHTML = '';
+            if (b.exercises) {
+                b.exercises.forEach((e, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'glass ex-card';
+                    div.innerHTML = `<input value="${e.n}" onchange="window.updEx(${i},'n',this.value)" placeholder="Ejercicio" style="background:none; border:none; padding:0; font-size:1.1rem; width:100%; font-weight:700;"><div class="ex-input-grid"><input type="text" value="${e.w || ''}" onchange="window.updEx(${i},'w',this.value)" placeholder="Peso"><input type="number" value="${e.s || ''}" onchange="window.updEx(${i},'s',this.value)" placeholder="S"><input type="number" value="${e.r || ''}" onchange="window.updEx(${i},'r',this.value)" placeholder="R"></div>`;
+                    cont.appendChild(div);
+                });
+            }
+        }
+
+        window.updateBtnTrained = () => {
+            const btn = getEl('btnDone');
+            if (!btn) return;
+            const done = db.t_logs[selDayStr] || false;
+            btn.style.background = done ? 'rgba(0, 230, 118, 0.1)' : '';
+            btn.style.borderColor = done ? '#00e676' : '';
+            btn.innerHTML = done ? '¡Sesión registrada hoy!' : 'Marcar sesión completada';
+        }
+
+        window.renderFin = () => {
+            if (!getEl('totalIncDisp')) return;
+            getEl('totalIncDisp').innerText = db.income + '€';
+            getEl('incInput').value = db.income;
+            const i = db.income;
+            const items = [{ l: 'Necesarios', p: '60%', c: '#448aff', v: i * 0.6, icon: 'home' }, { l: 'Ahorro', p: '20%', c: '#00e676', v: i * 0.2, icon: 'piggy-bank' }, { l: 'Inversión', p: '10%', c: '#7c4dff', v: i * 0.1, icon: 'trending-up' }, { l: 'Ocio', p: '10%', c: '#ff4081', v: i * 0.1, icon: 'coffee' }];
+            getEl('finDetails').innerHTML = items.map(it => `<div class="glass" style="padding:1rem; display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;"><div style="display:flex; gap:12px; align-items:center;"><div style="background:${it.c}22; color:${it.c}; padding:8px; border-radius:10px;"><i data-lucide="${it.icon}" style="width:20px;"></i></div><div><p style="font-weight:700; font-size:0.9rem;">${it.l}</p><p style="font-size:0.7rem; color:var(--text-dim); font-weight:700;">${it.p}</p></div></div><h3 style="color:${it.c}">${Math.round(it.v)}€</h3></div>`).join('');
+
+            if (typeof Chart !== 'undefined' && getEl('finChart')) {
+                const ctx = getEl('finChart').getContext('2d');
+                if (finChart) finChart.destroy();
+                finChart = new Chart(ctx, { type: 'doughnut', data: { datasets: [{ data: [60, 20, 10, 10], backgroundColor: ['#448aff', '#00e676', '#7c4dff', '#ff4081'], borderWidth: 0 }] }, options: { cutout: '85%', plugins: { legend: { display: false } } } });
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.renderStats = () => {
+            const cont = getEl('statsCont');
+            const mLbl = getEl('statsMonthLabel');
+            if (!cont || !mLbl) return;
+            const m = currCal.getMonth(), y = currCal.getFullYear();
+            const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            mLbl.innerText = `${monthNames[m]} ${y}`;
+            let tCnt = 0; const pref = `${y}-${String(m + 1).padStart(2, '0')}`;
+            Object.keys(db.t_logs).forEach(d => { if (d.startsWith(pref) && db.t_logs[d]) tCnt++; });
+            const hStats = db.habits.map(h => {
+                let c = 0;
+                Object.keys(db.logs).forEach(d => { if (d.startsWith(pref) && db.logs[d][h.id]) c++; });
+                return { n: h.name, c };
+            });
+            cont.innerHTML = `<div class="glass" style="padding:1.5rem; display:flex; align-items:center; gap:1.5rem;"><div style="background:var(--p-dim); color:var(--p); padding:1rem; border-radius:15px;"><i data-lucide="dumbbell" style="width:30px; height:30px;"></i></div><div><h2 style="margin:0; font-size:2rem;">${tCnt}</h2><p style="margin:0; color:var(--text-dim); font-weight:700; font-size:0.8rem;">Entrenos del mes</p></div></div>`;
+            hStats.forEach(hs => {
+                const total = new Date(y, m + 1, 0).getDate();
+                const pct = total > 0 ? Math.round((hs.c / total) * 100) : 0;
+                cont.innerHTML += `<div class="glass" style="padding:1.5rem;"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;"><div><h3 style="margin:0;">${hs.n}</h3><p style="margin:0; color:var(--text-dim); font-size:0.7rem; font-weight:700;">${hs.c} días</p></div><h2 style="margin:0; color:var(--s);">${pct}%</h2></div><div style="height:6px; background:rgba(255,255,255,0.05); border-radius:10px; overflow:hidden;"><div style="height:100%; width:${pct}%; background:var(--s);"></div></div></div>`;
+            });
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        // --- WRITES ---
+        window.addHabit = async () => {
+            if (!user) return alert("Error: Inicia sesión de nuevo");
+            const name = prompt('Nombre del hábito:');
+            if (!name) return;
+            toast("Guardando...", "#448aff");
+            try {
+                const { data, error } = await supabase.from('habits').insert({ user_id: user.id, name }).select();
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    db.habits.push(data[0]);
+                    window.renderHabits();
+                    toast("¡Hecho!");
+                }
+            } catch (e) {
+                console.error("AddHabit Fail:", e);
+                alert("Error Supabase: " + e.message);
+            }
+        }
+
+        window.toggleHabit = async (id, done) => {
+            if (!user) return;
+            if (!db.logs[selDayStr]) db.logs[selDayStr] = {};
+            db.logs[selDayStr][id] = !done;
+            window.renderHabits(); window.renderCal();
+            const { error } = await supabase.from('habit_logs').upsert({ user_id: user.id, habit_id: id, date: selDayStr, completed: !done }, { onConflict: 'habit_id, date' });
+            if (error) toast("Error de red", "#ff4081");
+        }
+
+        window.addBlock = async () => {
+            if (!user) return alert("Error: Inicia sesión de nuevo");
+            const n = prompt('Nombre de la rutina:');
+            if (!n) return;
+            toast("Creando...", "#448aff");
+            try {
+                const { data, error } = await supabase.from('training_blocks').insert({ user_id: user.id, name: n, exercises: [] }).select();
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    db.blocks.push(data[0]);
+                    window.showBlocks();
+                    toast("¡Hecho!");
+                }
+            } catch (e) {
+                console.error("AddBlock Fail:", e);
+                alert("Error Supabase: " + e.message);
+            }
+        }
+
+        window.updEx = async (i, f, v) => {
+            const b = db.blocks.find(x => x.id === currBlockId); if (!b) return;
+            b.exercises[i][f] = v;
+            await supabase.from('training_blocks').update({ exercises: b.exercises }).eq('id', b.id);
+            toast("Guardado");
+        }
+
+        window.addEx = async () => {
+            const b = db.blocks.find(x => x.id === currBlockId); if (!b) return;
+            if (!b.exercises) b.exercises = [];
+            b.exercises.push({ n: '', w: '', s: '', r: '' });
+            await supabase.from('training_blocks').update({ exercises: b.exercises }).eq('id', b.id);
+            window.renderExs();
+        }
+
+        window.markDayTrained = async () => {
+            if (!user) return;
+            const done = !db.t_logs[selDayStr];
+            db.t_logs[selDayStr] = done;
+            window.updateBtnTrained(); window.renderCal();
+            const { error } = await supabase.from('training_logs').upsert({ user_id: user.id, date: selDayStr, completed: done }, { onConflict: 'user_id, date' });
+            if (error) toast("Error de red", "#ff4081");
+        }
+
+        window.setTab = (id, el) => {
+            const target = getEl('view-' + id);
+            if (!target) return;
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+            document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+            target.classList.remove('hidden');
+            if (el) el.classList.add('active');
+            window.renderAll();
+        }
+
+        window.calShift = (v) => {
+            currCal.setMonth(currCal.getMonth() + v);
+            window.renderCal();
+            if (!getEl('view-stats').classList.contains('hidden')) window.renderStats();
+        }
+
+        window.updateInc = async () => {
+            db.income = Number(getEl('incInput').value) || 0;
+            window.renderFin();
+            if (user) await supabase.from('profiles').upsert({ id: user.id, income: db.income });
+        }
+
+        // --- INIT ---
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                user = session.user;
+                getEl('auth-overlay').style.display = 'none';
+                getEl('app-view').classList.remove('hidden');
+                await syncAll();
+            }
+
+            supabase.auth.onAuthStateChange(async (event, session) => {
+                console.log("Auth event:", event);
+                if (session) {
+                    user = session.user;
+                    getEl('auth-overlay').style.display = 'none';
+                    getEl('app-view').classList.remove('hidden');
+                    await syncAll();
+                } else {
+                    user = null;
+                    getEl('auth-overlay').style.display = 'flex';
+                    getEl('app-view').classList.add('hidden');
+                }
+            });
+        }
+
+        init();
+        setTimeout(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); }, 1000);
+    </script>
+</body>
+
+</html>
