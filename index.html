@@ -454,6 +454,19 @@
                 </div>
             </section>
         </div>
+
+        <footer id="debug-footer" class="glass"
+            style="margin-top:2rem; padding:1rem; font-size:0.7rem; color:var(--text-dim); display:none; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <p style="margin:0;">👤 <span id="debug-email"></span></p>
+                    <p style="margin:0; opacity:0.5;">ID: <span id="debug-uid"></span></p>
+                </div>
+                <button onclick="window.syncAll()" class="glass"
+                    style="padding:4px 12px; font-weight:800; color:var(--p);">Sincronizar ahora</button>
+            </div>
+            <p id="debug-sync-time" style="margin:0; text-align:right; opacity:0.5;">Sesión iniciada</p>
+        </footer>
     </div>
 
     <script type="module">
@@ -576,10 +589,13 @@
                 tlogs?.forEach(l => db.t_logs[l.date] = l.completed);
 
                 console.log("Sync done. Habits:", db.habits.length);
+                const now = new Date().toLocaleTimeString();
+                getEl('debug-sync-time').innerText = "Última sincronización: " + now;
                 window.renderAll();
                 toast("Sincronizado");
             } catch (e) {
                 console.error("Sync Error:", e);
+                getEl('debug-sync-time').innerText = "Error de sincronización: " + e.message;
                 toast("Error al sincronizar", "#ff4081");
                 window.renderAll();
             } finally {
@@ -1047,6 +1063,9 @@
                 user = session.user;
                 getEl('auth-overlay').style.display = 'none';
                 getEl('app-view').classList.remove('hidden');
+                getEl('debug-footer').style.display = 'flex';
+                getEl('debug-email').innerText = user.email;
+                getEl('debug-uid').innerText = user.id.slice(0, 8) + '...';
                 await syncAll();
             }
 
@@ -1056,11 +1075,15 @@
                     user = session.user;
                     getEl('auth-overlay').style.display = 'none';
                     getEl('app-view').classList.remove('hidden');
+                    getEl('debug-footer').style.display = 'flex';
+                    getEl('debug-email').innerText = user.email;
+                    getEl('debug-uid').innerText = user.id.slice(0, 8) + '...';
                     await syncAll();
                 } else {
                     user = null;
                     getEl('auth-overlay').style.display = 'flex';
                     getEl('app-view').classList.add('hidden');
+                    getEl('debug-footer').style.display = 'none';
                 }
             });
         }
