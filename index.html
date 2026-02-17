@@ -563,7 +563,7 @@
                         }
                     }
                 } else if (!profErr) {
-                    await supabase.from('profiles').upsert({ id: user.id, income: 2000, fin_config: db.fin_config });
+                    await supabase.from('profiles').upsert({ id: user.id, income: 2000, fin_config: db.fin_config }, { onConflict: 'id' });
                 }
 
                 // Habits
@@ -940,9 +940,9 @@
                     id: user.id,
                     income: db.income,
                     fin_config: db.fin_config
-                });
+                }, { onConflict: 'id' });
                 if (error) {
-                    console.error("SaveFinConfig Error:", error);
+                    console.error("SaveFinConfig Error Detail:", error);
                     toast("Error al guardar finanzas", "#ff4081");
                     return;
                 }
