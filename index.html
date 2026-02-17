@@ -550,43 +550,46 @@
                 console.log("Syncing user:", user.id);
 
                 // Profiles (Income & Config)
-                const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-                if (prof) {
-                    db.income = prof.income;
+                const { data: prof, error: profErr } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+                if (!profErr && prof) {
+                    db.income = prof.income || 2000;
                     if (prof.fin_config) {
                         db.fin_config = prof.fin_config;
                         if (!db.fin_config.fixed) db.fin_config.fixed = [];
                         if (!db.fin_config.extras) db.fin_config.extras = [];
-                        // Migration: Convert array pcts to object if needed
                         if (Array.isArray(db.fin_config.pcts)) {
                             const [sp, sa, iv, le] = db.fin_config.pcts;
                             db.fin_config.pcts = { spending: sp || 60, savings: sa || 20, invest: iv || 10, leisure: le || 10 };
                         }
                     }
-                } else {
+                } else if (!profErr) {
                     await supabase.from('profiles').upsert({ id: user.id, income: 2000, fin_config: db.fin_config });
                 }
 
                 // Habits
-                const { data: habs } = await supabase.from('habits').select('*').eq('user_id', user.id);
-                db.habits = habs || [];
+                const { data: habs, error: habErr } = await supabase.from('habits').select('*').eq('user_id', user.id);
+                if (!habErr) db.habits = habs || [];
 
                 // Habit Logs
-                const { data: hlogs } = await supabase.from('habit_logs').select('*').eq('user_id', user.id);
-                db.logs = {};
-                hlogs?.forEach(l => {
-                    if (!db.logs[l.date]) db.logs[l.date] = {};
-                    db.logs[l.date][l.habit_id] = l.completed;
-                });
+                const { data: hlogs, error: hlogErr } = await supabase.from('habit_logs').select('*').eq('user_id', user.id);
+                if (!hlogErr) {
+                    db.logs = {};
+                    hlogs?.forEach(l => {
+                        if (!db.logs[l.date]) db.logs[l.date] = {};
+                        db.logs[l.date][l.habit_id] = l.completed;
+                    });
+                }
 
                 // Training Blocks
-                const { data: blks } = await supabase.from('training_blocks').select('*').eq('user_id', user.id);
-                db.blocks = blks || [];
+                const { data: blks, error: blkErr } = await supabase.from('training_blocks').select('*').eq('user_id', user.id);
+                if (!blkErr) db.blocks = blks || [];
 
                 // Training Logs
-                const { data: tlogs } = await supabase.from('training_logs').select('*').eq('user_id', user.id);
-                db.t_logs = {};
-                tlogs?.forEach(l => db.t_logs[l.date] = l.completed);
+                const { data: tlogs, error: tlogErr } = await supabase.from('training_logs').select('*').eq('user_id', user.id);
+                if (!tlogErr) {
+                    db.t_logs = {};
+                    tlogs?.forEach(l => db.t_logs[l.date] = l.completed);
+                }
 
                 console.log("Sync done. Habits:", db.habits.length);
                 window.renderAll();
@@ -933,11 +936,16 @@
         window.saveFinConfig = async () => {
             db.income = Number(getEl('incInput').value) || 0;
             if (user) {
-                await supabase.from('profiles').upsert({
+                const { error } = await supabase.from('profiles').upsert({
                     id: user.id,
                     income: db.income,
                     fin_config: db.fin_config
                 });
+                if (error) {
+                    console.error("SaveFinConfig Error:", error);
+                    toast("Error al guardar finanzas", "#ff4081");
+                    return;
+                }
             }
             toast("Guardado");
         }
@@ -987,13 +995,12 @@
 
         window.toggleHabit = async (id, done) => {
             if (!user) return;
-            if (!db.logs[selDayStr]) db.logs[selDayStr] = {};
             db.logs[selDayStr][id] = !done;
             window.renderHabits(); window.renderCal();
-            const { error } = await supabase.from('habit_logs').upsert({ user_id: user.id, habit_id: id, date: selDayStr, completed: !done }, { onConflict: 'habit_id, date' });
+            const { error } = await supabase.from('habit_logs').upsert({ user_id: user.id, habit_id: id, date: selDayStr, completed: !done });
             if (error) {
                 console.error("ToggleHabit Error:", error);
-                toast("Error al guardar hábito", "#ff4081");
+                toast("Error al guardar", "#ff4081");
             }
         }
 
@@ -1036,8 +1043,11 @@
             const done = !db.t_logs[selDayStr];
             db.t_logs[selDayStr] = done;
             window.updateBtnTrained(); window.renderCal();
-            const { error } = await supabase.from('training_logs').upsert({ user_id: user.id, date: selDayStr, completed: done }, { onConflict: 'user_id, date' });
-            if (error) toast("Error de red", "#ff4081");
+            const { error } = await supabase.from('training_logs').upsert({ user_id: user.id, date: selDayStr, completed: done });
+            if (error) {
+                console.error("MarkDayTrained Error:", error);
+                toast("Error al guardar", "#ff4081");
+            }
         }
 
         window.setTab = (id, el) => {
