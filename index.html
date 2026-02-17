@@ -394,15 +394,54 @@
 
             <section id="view-finance" class="tab-content hidden">
                 <h1>Finanzas</h1>
-                <p class="section-desc">Tu reparto mensual 60/20/10/10.</p>
+                <p class="section-desc">Gestiona tus ingresos, gastos fijos y reparto del capital.</p>
+
                 <div class="glass" style="padding: 2rem; text-align: center; margin-bottom: 2rem;">
                     <div style="width: 200px; height: 200px; margin: 0 auto 1.5rem;"><canvas id="finChart"></canvas>
                     </div>
+                    <p style="text-transform:uppercase; font-size:0.7rem; font-weight:800; color:var(--text-dim);">
+                        Sobrante tras gastos</p>
                     <h2 id="totalIncDisp" style="font-size: 3rem; font-weight: 800;">2000€</h2>
-                    <input type="number" id="incInput" onchange="updateInc()"
-                        style="text-align: center; max-width: 120px;" value="2000">
+                    <div style="display:flex; justify-content:center; gap:10px; align-items:center;">
+                        <span style="font-size:0.9rem; font-weight:700;">Sueldo:</span>
+                        <input type="number" id="incInput" onchange="window.saveFinConfig()"
+                            style="text-align: center; max-width: 120px;" value="2000">
+                    </div>
                 </div>
+
+                <!-- Reparto Percentiles -->
+                <div class="glass" style="padding:1.5rem; margin-bottom:2rem;">
+                    <h3 style="margin-bottom:1rem; font-size:1rem;">Configurar Reparto (%)</h3>
+                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:1rem;" id="pctInputs">
+                        <!-- Injected by JS -->
+                    </div>
+                </div>
+
                 <div id="finDetails"></div>
+
+                <div style="display:grid; grid-template-columns: 1fr; gap:1.5rem; margin-top:2rem;">
+                    <!-- Gastos Fijos -->
+                    <div class="glass" style="padding:1.5rem;">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                            <h3 style="font-size:1rem;">Gastos Fijos Mensuales</h3>
+                            <button onclick="window.addFinItem('fixed')"
+                                style="background:none; border:none; color:var(--p); font-weight:800;">+ Añadir</button>
+                        </div>
+                        <div id="fixedList"></div>
+                    </div>
+
+                    <!-- Bloc Extras -->
+                    <div class="glass" style="padding:1.5rem;">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                            <h3 style="font-size:1rem;">Bloc Pagos Extras</h3>
+                            <button onclick="window.addFinItem('extras')"
+                                style="background:none; border:none; color:var(--p); font-weight:800;">+ Añadir</button>
+                        </div>
+                        <div id="extrasList"></div>
+                    </div>
+                </div>
             </section>
 
             <section id="view-stats" class="tab-content hidden">
@@ -434,7 +473,18 @@
         // --- GLOBAL STATE ---
         let user = null;
         let isSyncing = false;
-        let db = { habits: [], logs: {}, blocks: [], t_logs: {}, income: 2000 };
+        let db = {
+            habits: [],
+            logs: {},
+            blocks: [],
+            t_logs: {},
+            income: 2000,
+            fin_config: {
+                pcts: [60, 20, 10, 10],
+                fixed: [],
+                extras: []
+            }
+        };
 
         let currCal = new Date();
         let selDayStr = new Date().toISOString().split('T')[0];
@@ -488,10 +538,14 @@
             try {
                 console.log("Syncing user:", user.id);
 
-                // Income
+                // Profiles (Income & Config)
                 const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
-                if (prof) db.income = prof.income;
-                else await supabase.from('profiles').upsert({ id: user.id, income: 2000 });
+                if (prof) {
+                    db.income = prof.income;
+                    if (prof.fin_config) db.fin_config = prof.fin_config;
+                } else {
+                    await supabase.from('profiles').upsert({ id: user.id, income: 2000, fin_config: db.fin_config });
+                }
 
                 // Habits
                 const { data: habs } = await supabase.from('habits').select('*').eq('user_id', user.id);
@@ -581,11 +635,63 @@
                 const done = db.logs[selDayStr]?.[h.id] || false;
                 const div = document.createElement('div');
                 div.className = 'glass habit-item';
-                div.onclick = () => window.toggleHabit(h.id, done);
-                div.innerHTML = `<span style="font-weight:700;">${h.name}</span><div class="chk ${done ? 'on' : ''}">${done ? '<i data-lucide="check" style="width:16px;"></i>' : ''}</div>`;
+                div.innerHTML = `
+                    <div style="flex:1; display:flex; align-items:center; gap:12px;" onclick="window.toggleHabit('${h.id}', ${done})">
+                        <span style="font-weight:700;">${h.name}</span>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button onclick="event.stopPropagation(); window.editHabit('${h.id}')" style="background:none; border:none; color:var(--text-dim); padding:4px;"><i data-lucide="edit-2" style="width:16px;"></i></button>
+                        <button onclick="event.stopPropagation(); window.deleteHabit('${h.id}')" style="background:none; border:none; color:#ff4d6d; padding:4px;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                        <div class="chk ${done ? 'on' : ''}" onclick="event.stopPropagation(); window.toggleHabit('${h.id}', ${done})">${done ? '<i data-lucide="check" style="width:16px;"></i>' : ''}</div>
+                    </div>
+                `;
                 cont.appendChild(div);
             });
             if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.editHabit = async (id) => {
+            const h = db.habits.find(x => x.id === id);
+            if (!h) return;
+            const newName = prompt('Nuevo nombre para el hábito:', h.name);
+            if (!newName || newName === h.name) return;
+
+            toast("Actualizando...", "#448aff");
+            try {
+                const { error } = await supabase.from('habits').update({ name: newName }).eq('id', id);
+                if (error) throw error;
+                h.name = newName;
+                window.renderHabits();
+                toast("Actualizado");
+            } catch (e) {
+                console.error("EditHabit Fail:", e);
+                toast("Error al editar", "#ff4081");
+            }
+        }
+
+        window.deleteHabit = async (id) => {
+            if (!confirm('¿Estás seguro de que quieres eliminar este hábito y todos sus registros?')) return;
+
+            toast("Eliminando...", "#ff4d6d");
+            try {
+                // Delete logs first if there's no cascade
+                await supabase.from('habit_logs').delete().eq('habit_id', id);
+                const { error } = await supabase.from('habits').delete().eq('id', id);
+                if (error) throw error;
+
+                db.habits = db.habits.filter(x => x.id !== id);
+                // Clean up logs in memory
+                Object.keys(db.logs).forEach(date => {
+                    delete db.logs[date][id];
+                });
+
+                window.renderHabits();
+                window.renderCal();
+                toast("Eliminado");
+            } catch (e) {
+                console.error("DeleteHabit Fail:", e);
+                toast("Error al eliminar", "#ff4081");
+            }
         }
 
         window.showBlocks = () => {
@@ -641,18 +747,118 @@
 
         window.renderFin = () => {
             if (!getEl('totalIncDisp')) return;
-            getEl('totalIncDisp').innerText = db.income + '€';
-            getEl('incInput').value = db.income;
-            const i = db.income;
-            const items = [{ l: 'Necesarios', p: '60%', c: '#448aff', v: i * 0.6, icon: 'home' }, { l: 'Ahorro', p: '20%', c: '#00e676', v: i * 0.2, icon: 'piggy-bank' }, { l: 'Inversión', p: '10%', c: '#7c4dff', v: i * 0.1, icon: 'trending-up' }, { l: 'Ocio', p: '10%', c: '#ff4081', v: i * 0.1, icon: 'coffee' }];
-            getEl('finDetails').innerHTML = items.map(it => `<div class="glass" style="padding:1rem; display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;"><div style="display:flex; gap:12px; align-items:center;"><div style="background:${it.c}22; color:${it.c}; padding:8px; border-radius:10px;"><i data-lucide="${it.icon}" style="width:20px;"></i></div><div><p style="font-weight:700; font-size:0.9rem;">${it.l}</p><p style="font-size:0.7rem; color:var(--text-dim); font-weight:700;">${it.p}</p></div></div><h3 style="color:${it.c}">${Math.round(it.v)}€</h3></div>`).join('');
 
+            const fixedSum = db.fin_config.fixed.reduce((a, b) => a + Number(b.amount), 0);
+            const extraSum = db.fin_config.extras.reduce((a, b) => a + Number(b.amount), 0);
+            const netIncome = Math.max(0, db.income - fixedSum - extraSum);
+
+            getEl('totalIncDisp').innerText = netIncome + '€';
+            getEl('incInput').value = db.income;
+
+            // Render Percentages Inputs
+            const pctContainer = getEl('pctInputs');
+            const pctLabels = ['Gastos', 'Ahorro', 'Inversión', 'Ocio'];
+            pctContainer.innerHTML = db.fin_config.pcts.map((p, idx) => `
+                <div>
+                    <p style="font-size:0.7rem; color:var(--text-dim); font-weight:700; margin-bottom:4px;">${pctLabels[idx]}</p>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <input type="number" value="${p}" onchange="window.updPct(${idx}, this.value)" style="padding:6px; font-size:0.8rem;">
+                        <span style="font-weight:700; font-size:0.8rem;">%</span>
+                    </div>
+                </div>
+            `).join('');
+
+            // Render Details with custom pcts
+            const items = [
+                { l: 'Necesarios', p: db.fin_config.pcts[0] + '%', c: '#448aff', v: netIncome * (db.fin_config.pcts[0] / 100), icon: 'home' },
+                { l: 'Ahorro', p: db.fin_config.pcts[1] + '%', c: '#00e676', v: netIncome * (db.fin_config.pcts[1] / 100), icon: 'piggy-bank' },
+                { l: 'Inversión', p: db.fin_config.pcts[2] + '%', c: '#7c4dff', v: netIncome * (db.fin_config.pcts[2] / 100), icon: 'trending-up' },
+                { l: 'Ocio', p: db.fin_config.pcts[3] + '%', c: '#ff4081', v: netIncome * (db.fin_config.pcts[3] / 100), icon: 'coffee' }
+            ];
+            getEl('finDetails').innerHTML = items.map(it => `
+                <div class="glass" style="padding:1rem; display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                    <div style="display:flex; gap:12px; align-items:center;">
+                        <div style="background:${it.c}22; color:${it.c}; padding:8px; border-radius:10px;"><i data-lucide="${it.icon}" style="width:20px;"></i></div>
+                        <div>
+                            <p style="font-weight:700; font-size:0.9rem;">${it.l}</p>
+                            <p style="font-size:0.7rem; color:var(--text-dim); font-weight:700;">${it.p}</p>
+                        </div>
+                    </div>
+                    <h3 style="color:${it.c}">${Math.round(it.v)}€</h3>
+                </div>
+            `).join('');
+
+            // Lists: Fixed & Extras
+            const renderList = (id, list, type) => {
+                const cont = getEl(id);
+                cont.innerHTML = list.length === 0 ? '<p style="font-size:0.7rem; color:var(--text-dim); font-weight:700; text-align:center; padding:1rem;">Ninguno</p>' : '';
+                list.forEach((it, idx) => {
+                    const d = document.createElement('div');
+                    d.style = "display:flex; gap:8px; align-items:center; margin-bottom:8px;";
+                    d.innerHTML = `
+                        <input type="text" value="${it.name}" placeholder="Nombre" onchange="window.updFinItem('${type}', ${idx}, 'name', this.value)" style="padding:8px; font-size:0.8rem; flex:2;">
+                        <input type="number" value="${it.amount}" placeholder="€" onchange="window.updFinItem('${type}', ${idx}, 'amount', this.value)" style="padding:8px; font-size:0.8rem; flex:1;">
+                        <button onclick="window.delFinItem('${type}', ${idx})" style="background:none; border:none; color:#ff4d6d;"><i data-lucide="x" style="width:16px;"></i></button>
+                    `;
+                    cont.appendChild(d);
+                });
+            };
+            renderList('fixedList', db.fin_config.fixed, 'fixed');
+            renderList('extrasList', db.fin_config.extras, 'extras');
+
+            // Chart
             if (typeof Chart !== 'undefined' && getEl('finChart')) {
                 const ctx = getEl('finChart').getContext('2d');
                 if (finChart) finChart.destroy();
-                finChart = new Chart(ctx, { type: 'doughnut', data: { datasets: [{ data: [60, 20, 10, 10], backgroundColor: ['#448aff', '#00e676', '#7c4dff', '#ff4081'], borderWidth: 0 }] }, options: { cutout: '85%', plugins: { legend: { display: false } } } });
+                finChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        datasets: [{
+                            data: db.fin_config.pcts,
+                            backgroundColor: ['#448aff', '#00e676', '#7c4dff', '#ff4081'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: { cutout: '85%', plugins: { legend: { display: false } } }
+                });
             }
             if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.updPct = (idx, val) => {
+            db.fin_config.pcts[idx] = Number(val);
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.addFinItem = (type) => {
+            db.fin_config[type].push({ name: '', amount: 0 });
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.updFinItem = (type, idx, field, val) => {
+            db.fin_config[type][idx][field] = field === 'amount' ? Number(val) : val;
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.delFinItem = (type, idx) => {
+            db.fin_config[type].splice(idx, 1);
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.saveFinConfig = async () => {
+            db.income = Number(getEl('incInput').value) || 0;
+            if (user) {
+                await supabase.from('profiles').upsert({
+                    id: user.id,
+                    income: db.income,
+                    fin_config: db.fin_config
+                });
+            }
+            toast("Guardado");
         }
 
         window.renderStats = () => {
@@ -669,7 +875,7 @@
                 Object.keys(db.logs).forEach(d => { if (d.startsWith(pref) && db.logs[d][h.id]) c++; });
                 return { n: h.name, c };
             });
-            cont.innerHTML = `<div class="glass" style="padding:1.5rem; display:flex; align-items:center; gap:1.5rem;"><div style="background:var(--p-dim); color:var(--p); padding:1rem; border-radius:15px;"><i data-lucide="dumbbell" style="width:30px; height:30px;"></i></div><div><h2 style="margin:0; font-size:2rem;">${tCnt}</h2><p style="margin:0; color:var(--text-dim); font-weight:700; font-size:0.8rem;">Entrenos del mes</p></div></div>`;
+            cont.innerHTML = `<div class="glass" style="padding:1.5rem; display:flex; align-items:center; gap:1.5rem;"><div style="background:rgba(124, 77, 255, 0.1); color:var(--p); padding:1rem; border-radius:15px;"><i data-lucide="dumbbell" style="width:30px; height:30px;"></i></div><div><h2 style="margin:0; font-size:2rem;">${tCnt}</h2><p style="margin:0; color:var(--text-dim); font-weight:700; font-size:0.8rem;">Entrenos del mes</p></div></div>`;
             hStats.forEach(hs => {
                 const total = new Date(y, m + 1, 0).getDate();
                 const pct = total > 0 ? Math.round((hs.c / total) * 100) : 0;
@@ -764,12 +970,6 @@
             currCal.setMonth(currCal.getMonth() + v);
             window.renderCal();
             if (!getEl('view-stats').classList.contains('hidden')) window.renderStats();
-        }
-
-        window.updateInc = async () => {
-            db.income = Number(getEl('incInput').value) || 0;
-            window.renderFin();
-            if (user) await supabase.from('profiles').upsert({ id: user.id, income: db.income });
         }
 
         // --- INIT ---
