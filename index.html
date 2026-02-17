@@ -480,7 +480,7 @@
             t_logs: {},
             income: 2000,
             fin_config: {
-                pcts: [60, 20, 10, 10],
+                pcts: { spending: 60, savings: 20, invest: 10, leisure: 10 },
                 fixed: [],
                 extras: []
             }
@@ -542,7 +542,14 @@
                 const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
                 if (prof) {
                     db.income = prof.income;
-                    if (prof.fin_config) db.fin_config = prof.fin_config;
+                    if (prof.fin_config) {
+                        db.fin_config = prof.fin_config;
+                        // Migration: Convert array pcts to object if needed
+                        if (Array.isArray(db.fin_config.pcts)) {
+                            const [sp, sa, iv, le] = db.fin_config.pcts;
+                            db.fin_config.pcts = { spending: sp || 60, savings: sa || 20, invest: iv || 10, leisure: le || 10 };
+                        }
+                    }
                 } else {
                     await supabase.from('profiles').upsert({ id: user.id, income: 2000, fin_config: db.fin_config });
                 }
@@ -703,11 +710,35 @@
             db.blocks.forEach(b => {
                 const div = document.createElement('div');
                 div.className = 'glass block-card';
+                div.style.position = 'relative';
                 div.onclick = () => window.showDetail(b.id);
-                div.innerHTML = `<h3>${b.name}</h3><span style="opacity:0.4; font-weight:700;">${b.exercises?.length || 0} ej.</span>`;
+                div.innerHTML = `
+                    <div style="flex:1;">
+                        <h3 style="margin:0;">${b.name}</h3>
+                        <span style="opacity:0.4; font-weight:700;">${b.exercises?.length || 0} ej.</span>
+                    </div>
+                    <button onclick="event.stopPropagation(); window.deleteBlock('${b.id}')" style="background:none; border:none; color:#ff4d6d; padding:8px; display:flex; align-items:center;">
+                        <i data-lucide="trash-2" style="width:18px;"></i>
+                    </button>
+                `;
                 cont.appendChild(div);
             });
             if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.deleteBlock = async (id) => {
+            if (!confirm('¿Eliminar esta rutina?')) return;
+            toast("Eliminando...", "#ff4d6d");
+            try {
+                const { error } = await supabase.from('training_blocks').delete().eq('id', id);
+                if (error) throw error;
+                db.blocks = db.blocks.filter(x => x.id !== id);
+                window.showBlocks();
+                toast("Eliminado");
+            } catch (e) {
+                console.error("DeleteBlock Fail:", e);
+                toast("Error al eliminar", "#ff4081");
+            }
         }
 
         window.showDetail = (id) => {
@@ -730,10 +761,29 @@
                 b.exercises.forEach((e, i) => {
                     const div = document.createElement('div');
                     div.className = 'glass ex-card';
-                    div.innerHTML = `<input value="${e.n}" onchange="window.updEx(${i},'n',this.value)" placeholder="Ejercicio" style="background:none; border:none; padding:0; font-size:1.1rem; width:100%; font-weight:700;"><div class="ex-input-grid"><input type="text" value="${e.w || ''}" onchange="window.updEx(${i},'w',this.value)" placeholder="Peso"><input type="number" value="${e.s || ''}" onchange="window.updEx(${i},'s',this.value)" placeholder="S"><input type="number" value="${e.r || ''}" onchange="window.updEx(${i},'r',this.value)" placeholder="R"></div>`;
+                    div.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <input value="${e.n}" onchange="window.updEx(${i},'n',this.value)" placeholder="Ejercicio" style="background:none; border:none; padding:0; font-size:1.1rem; width:100%; font-weight:700; color:var(--text); outline:none;">
+                            <button onclick="window.deleteEx(${i})" style="background:none; border:none; color:#ff4d6d; padding:4px;"><i data-lucide="x" style="width:16px;"></i></button>
+                        </div>
+                        <div class="ex-input-grid">
+                            <input type="text" value="${e.w || ''}" onchange="window.updEx(${i},'w',this.value)" placeholder="Peso">
+                            <input type="number" value="${e.s || ''}" onchange="window.updEx(${i},'s',this.value)" placeholder="S">
+                            <input type="number" value="${e.r || ''}" onchange="window.updEx(${i},'r',this.value)" placeholder="R">
+                        </div>
+                    `;
                     cont.appendChild(div);
                 });
             }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        window.deleteEx = async (idx) => {
+            const b = db.blocks.find(x => x.id === currBlockId); if (!b) return;
+            b.exercises.splice(idx, 1);
+            await supabase.from('training_blocks').update({ exercises: b.exercises }).eq('id', b.id);
+            window.renderExs();
+            toast("Ejercicio eliminado");
         }
 
         window.updateBtnTrained = () => {
@@ -748,32 +798,50 @@
         window.renderFin = () => {
             if (!getEl('totalIncDisp')) return;
 
-            const fixedSum = db.fin_config.fixed.reduce((a, b) => a + Number(b.amount), 0);
-            const extraSum = db.fin_config.extras.reduce((a, b) => a + Number(b.amount), 0);
+            const fixedSum = db.fin_config.fixed.reduce((a, b) => a + (Number(b.amount) || 0), 0);
+            const extraSum = db.fin_config.extras.reduce((a, b) => a + (Number(b.amount) || 0), 0);
             const netIncome = Math.max(0, db.income - fixedSum - extraSum);
 
-            getEl('totalIncDisp').innerText = netIncome + '€';
+            getEl('totalIncDisp').innerText = `${netIncome}€`;
             getEl('incInput').value = db.income;
 
-            // Render Percentages Inputs
-            const pctContainer = getEl('pctInputs');
-            const pctLabels = ['Gastos', 'Ahorro', 'Inversión', 'Ocio'];
-            pctContainer.innerHTML = db.fin_config.pcts.map((p, idx) => `
-                <div>
-                    <p style="font-size:0.7rem; color:var(--text-dim); font-weight:700; margin-bottom:4px;">${pctLabels[idx]}</p>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                        <input type="number" value="${p}" onchange="window.updPct(${idx}, this.value)" style="padding:6px; font-size:0.8rem;">
-                        <span style="font-weight:700; font-size:0.8rem;">%</span>
+            // Updates Pcts Logic
+            const pGrid = getEl('pctInputs');
+            if (pGrid) {
+                pGrid.innerHTML = Object.entries(db.fin_config.pcts).map(([k, v]) => `
+                    <div style="flex:1;">
+                        <span style="font-size:0.7rem; color:var(--text-dim); font-weight:700;">${k.toUpperCase()}</span>
+                        <input type="number" value="${v}" onchange="window.updPct('${k}', this.value)" style="width:100%; padding:0.5rem; border-radius:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--text); font-weight:700;">
                     </div>
-                </div>
-            `).join('');
+                `).join('');
+            }
 
-            // Render Details with custom pcts
+            // Update Chart
+            const ctx = document.getElementById('finChart')?.getContext('2d');
+            if (ctx) {
+                if (window.finChart) window.finChart.destroy();
+                const p = db.fin_config.pcts;
+                window.finChart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Gastos', 'Ahorro', 'Inv.', 'Ocio'],
+                        datasets: [{
+                            data: [p.spending, p.savings, p.invest, p.leisure],
+                            backgroundColor: ['#448aff', '#00e676', '#ffc107', '#ff4081'],
+                            borderWidth: 0,
+                            cutout: '80%'
+                        }]
+                    },
+                    options: { plugins: { legend: { display: false } }, responsive: true }
+                });
+            }
+
+            // Details
             const items = [
-                { l: 'Necesarios', p: db.fin_config.pcts[0] + '%', c: '#448aff', v: netIncome * (db.fin_config.pcts[0] / 100), icon: 'home' },
-                { l: 'Ahorro', p: db.fin_config.pcts[1] + '%', c: '#00e676', v: netIncome * (db.fin_config.pcts[1] / 100), icon: 'piggy-bank' },
-                { l: 'Inversión', p: db.fin_config.pcts[2] + '%', c: '#7c4dff', v: netIncome * (db.fin_config.pcts[2] / 100), icon: 'trending-up' },
-                { l: 'Ocio', p: db.fin_config.pcts[3] + '%', c: '#ff4081', v: netIncome * (db.fin_config.pcts[3] / 100), icon: 'coffee' }
+                { l: 'Gastos Necesarios', p: `${db.fin_config.pcts.spending}%`, v: netIncome * (db.fin_config.pcts.spending / 100), c: '#448aff', icon: 'shopping-cart' },
+                { l: 'Ahorro', p: `${db.fin_config.pcts.savings}%`, v: netIncome * (db.fin_config.pcts.savings / 100), c: '#00e676', icon: 'piggy-bank' },
+                { l: 'Inversión', p: `${db.fin_config.pcts.invest}%`, v: netIncome * (db.fin_config.pcts.invest / 100), c: '#ffc107', icon: 'trending-up' },
+                { l: 'Ocio', p: `${db.fin_config.pcts.leisure}%`, v: netIncome * (db.fin_config.pcts.leisure / 100), c: '#ff4081', icon: 'smile' }
             ];
             getEl('finDetails').innerHTML = items.map(it => `
                 <div class="glass" style="padding:1rem; display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
@@ -788,51 +856,49 @@
                 </div>
             `).join('');
 
-            // Lists: Fixed & Extras
-            const renderList = (id, list, type) => {
-                const cont = getEl(id);
-                cont.innerHTML = list.length === 0 ? '<p style="font-size:0.7rem; color:var(--text-dim); font-weight:700; text-align:center; padding:1rem;">Ninguno</p>' : '';
-                list.forEach((it, idx) => {
-                    const d = document.createElement('div');
-                    d.style = "display:flex; gap:8px; align-items:center; margin-bottom:8px;";
-                    d.innerHTML = `
-                        <input type="text" value="${it.name}" placeholder="Nombre" onchange="window.updFinItem('${type}', ${idx}, 'name', this.value)" style="padding:8px; font-size:0.8rem; flex:2;">
-                        <input type="number" value="${it.amount}" placeholder="€" onchange="window.updFinItem('${type}', ${idx}, 'amount', this.value)" style="padding:8px; font-size:0.8rem; flex:1;">
-                        <button onclick="window.delFinItem('${type}', ${idx})" style="background:none; border:none; color:#ff4d6d;"><i data-lucide="x" style="width:16px;"></i></button>
-                    `;
-                    cont.appendChild(d);
-                });
-            };
-            renderList('fixedList', db.fin_config.fixed, 'fixed');
-            renderList('extrasList', db.fin_config.extras, 'extras');
+            // Fixed & Extras with Sums
+            getEl('fixedList').innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3 style="margin:0;">Gastos Fijos</h3>
+                    <span style="color:var(--text-dim); font-weight:800; font-size:0.9rem; background:rgba(255,255,255,0.05); padding:4px 12px; border-radius:15px;">Total: ${fixedSum}€</span>
+                </div>
+                ${db.fin_config.fixed.map((x, i) => `
+                    <div style="display:grid; grid-template-columns: 1fr 60px 80px 40px; gap:8px; align-items:center; margin-bottom:0.5rem; background:rgba(255,255,255,0.03); padding:8px; border-radius:12px;">
+                        <input value="${x.label}" onchange="window.updFinItem('fixed', ${i}, 'label', this.value)" placeholder="Nombre" style="background:none; border:none; color:var(--text); font-weight:700; width:100%;">
+                        <input type="number" value="${x.amount}" onchange="window.updFinItem('fixed', ${i}, 'amount', this.value)" placeholder="€" style="background:none; border:none; color:var(--text); font-weight:700; width:100%;">
+                        <input type="text" value="${x.expire || ''}" onchange="window.updFinItem('fixed', ${i}, 'expire', this.value)" placeholder="Día/Exp" style="background:rgba(255,255,255,0.05); border:none; color:var(--text-dim); font-size:0.7rem; border-radius:4px; text-align:center; padding:4px;">
+                        <button onclick="window.delFinItem('fixed', ${i})" style="background:none; border:none; color:#ff4d6d;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                    </div>
+                `).join('')}
+                <button onclick="window.addFinItem('fixed')" style="width:100%; padding:0.6rem; border-radius:12px; background:rgba(255,255,255,0.05); border:2px dashed rgba(255,255,255,0.1); color:var(--text-dim); font-weight:700; margin-top:0.5rem;">+ Gasto Fijo</button>
+            `;
 
-            // Chart
-            if (typeof Chart !== 'undefined' && getEl('finChart')) {
-                const ctx = getEl('finChart').getContext('2d');
-                if (finChart) finChart.destroy();
-                finChart = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        datasets: [{
-                            data: db.fin_config.pcts,
-                            backgroundColor: ['#448aff', '#00e676', '#7c4dff', '#ff4081'],
-                            borderWidth: 0
-                        }]
-                    },
-                    options: { cutout: '85%', plugins: { legend: { display: false } } }
-                });
-            }
+            getEl('extrasList').innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; margin-top:1.5rem;">
+                    <h3 style="margin:0;">Pagos Extras (Bloc)</h3>
+                    <span style="color:var(--text-dim); font-weight:800; font-size:0.9rem; background:rgba(255,255,255,0.05); padding:4px 12px; border-radius:15px;">Total: ${extraSum}€</span>
+                </div>
+                ${db.fin_config.extras.map((x, i) => `
+                    <div style="display:grid; grid-template-columns: 1fr 60px 40px; gap:8px; align-items:center; margin-bottom:0.5rem; background:rgba(255,255,255,0.03); padding:8px; border-radius:12px;">
+                        <input value="${x.label}" onchange="window.updFinItem('extras', ${i}, 'label', this.value)" placeholder="Concepto" style="background:none; border:none; color:var(--text); font-weight:700; width:100%;">
+                        <input type="number" value="${x.amount}" onchange="window.updFinItem('extras', ${i}, 'amount', this.value)" placeholder="€" style="background:none; border:none; color:var(--text); font-weight:700; width:100%;">
+                        <button onclick="window.delFinItem('extras', ${i})" style="background:none; border:none; color:#ff4d6d;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                    </div>
+                `).join('')}
+                <button onclick="window.addFinItem('extras')" style="width:100%; padding:0.6rem; border-radius:12px; background:rgba(255,255,255,0.05); border:2px dashed rgba(255,255,255,0.1); color:var(--text-dim); font-weight:700; margin-top:0.5rem;">+ Pago Extra</button>
+            `;
+
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
-        window.updPct = (idx, val) => {
-            db.fin_config.pcts[idx] = Number(val);
+        window.updPct = (k, v) => {
+            db.fin_config.pcts[k] = Number(v) || 0;
             window.renderFin();
             window.saveFinConfig();
         }
 
         window.addFinItem = (type) => {
-            db.fin_config[type].push({ name: '', amount: 0 });
+            db.fin_config[type].push({ label: '', amount: 0, expire: '' });
             window.renderFin();
             window.saveFinConfig();
         }
