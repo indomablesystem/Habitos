@@ -489,7 +489,7 @@
         let currCal = new Date();
         let selDayStr = new Date().toISOString().split('T')[0];
         let currBlockId = null;
-        let finChart = null;
+        let finChartInstance = null;
 
         // --- UTILS ---
         const getEl = (id) => document.getElementById(id);
@@ -819,9 +819,11 @@
             // Update Chart
             const ctx = document.getElementById('finChart')?.getContext('2d');
             if (ctx) {
-                if (window.finChart) window.finChart.destroy();
+                if (window.finChartInstance && typeof window.finChartInstance.destroy === 'function') {
+                    window.finChartInstance.destroy();
+                }
                 const p = db.fin_config.pcts;
-                window.finChart = new Chart(ctx, {
+                window.finChartInstance = new Chart(ctx, {
                     type: 'doughnut',
                     data: {
                         labels: ['Gastos', 'Ahorro', 'Inv.', 'Ocio'],
