@@ -441,6 +441,17 @@
                         </div>
                         <div id="extrasList"></div>
                     </div>
+
+                    <!-- Futuras Compras -->
+                    <div class="glass" style="padding:1.5rem;">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                            <h3 style="font-size:1rem;">Futuras Compras (Deseos)</h3>
+                            <button onclick="window.addWishItem()"
+                                style="background:none; border:none; color:var(--p); font-weight:800;">+ Añadir</button>
+                        </div>
+                        <div id="wishlistList"></div>
+                    </div>
                 </div>
             </section>
 
@@ -493,7 +504,8 @@
             fin_config: {
                 pcts: { spending: 60, savings: 20, invest: 10, leisure: 10 },
                 fixed: [],
-                extras: []
+                extras: [],
+                wishlist: []
             }
         };
 
@@ -557,6 +569,7 @@
                         db.fin_config = prof.fin_config;
                         if (!db.fin_config.fixed) db.fin_config.fixed = [];
                         if (!db.fin_config.extras) db.fin_config.extras = [];
+                        if (!db.fin_config.wishlist) db.fin_config.wishlist = [];
                         if (Array.isArray(db.fin_config.pcts)) {
                             const [sp, sa, iv, le] = db.fin_config.pcts;
                             db.fin_config.pcts = { spending: sp || 60, savings: sa || 20, invest: iv || 10, leisure: le || 10 };
@@ -906,6 +919,20 @@
                 <button onclick="window.addFinItem('extras')" style="width:100%; padding:0.6rem; border-radius:12px; background:rgba(255,255,255,0.05); border:2px dashed rgba(255,255,255,0.1); color:var(--text-dim); font-weight:700; margin-top:0.5rem;">+ Pago Extra</button>
             `;
 
+            getEl('wishlistList').innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; margin-top:1.5rem;">
+                    <h3 style="margin:0;">Lista de Deseos</h3>
+                </div>
+                ${db.fin_config.wishlist.map((x, i) => `
+                    <div style="display:grid; grid-template-columns: 40px 1fr 40px; gap:8px; align-items:center; margin-bottom:0.5rem; background:rgba(255,255,255,0.03); padding:8px; border-radius:12px; opacity: ${x.done ? '0.5' : '1'}">
+                        <div class="chk ${x.done ? 'on' : ''}" onclick="window.toggleWishItem(${i})">${x.done ? '<i data-lucide="check" style="width:16px;"></i>' : ''}</div>
+                        <input value="${x.label}" onchange="window.updWishItem(${i}, this.value)" placeholder="¿Qué quieres comprar?" style="background:none; border:none; color:var(--text); font-weight:700; width:100%; text-decoration: ${x.done ? 'line-through' : 'none'};">
+                        <button onclick="window.delWishItem(${i})" style="background:none; border:none; color:#ff4d6d;"><i data-lucide="trash-2" style="width:16px;"></i></button>
+                    </div>
+                `).join('')}
+                <button onclick="window.addWishItem()" style="width:100%; padding:0.6rem; border-radius:12px; background:rgba(255,255,255,0.05); border:2px dashed rgba(255,255,255,0.1); color:var(--text-dim); font-weight:700; margin-top:0.5rem;">+ Añadir a Deseos</button>
+            `;
+
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
@@ -929,6 +956,29 @@
 
         window.delFinItem = (type, idx) => {
             db.fin_config[type].splice(idx, 1);
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.addWishItem = () => {
+            db.fin_config.wishlist.push({ label: '', done: false });
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.updWishItem = (idx, val) => {
+            db.fin_config.wishlist[idx].label = val;
+            window.saveFinConfig();
+        }
+
+        window.toggleWishItem = (idx) => {
+            db.fin_config.wishlist[idx].done = !db.fin_config.wishlist[idx].done;
+            window.renderFin();
+            window.saveFinConfig();
+        }
+
+        window.delWishItem = (idx) => {
+            db.fin_config.wishlist.splice(idx, 1);
             window.renderFin();
             window.saveFinConfig();
         }
